@@ -1,0 +1,104 @@
+#!/usr/bin/env sh
+#####################################################################
+# AUTOR     : Jefferson Carneiro
+# DESCRIÇÃO : Loja para trabalhar com autenticação de 2 fatores
+#             Alternativa real para quem não possui um smartphone.
+# LICENÇA   : GPLv2
+#
+#####################################################################
+
+set -e # Problemas?
+
+################################## Variáveis
+
+PRG_NAME='2fa'
+VERSION='1.0'
+SOURCE="${HOME}/.2fa"
+
+################################## Testes
+
+for verify in oathtool gpg
+do
+    if ! type $verify 1> /dev/null 2> /dev/null; then
+        printf 'Necessita da ferramenta $verify instalada!\n'
+        printf 'Instale para continuar...\n'
+        exit 1
+    fi
+
+done
+
+################################## Funções
+usage()
+{
+    printf '%b' "Usage: 2fa [Opção] [Serviço]\n"
+    printf '%b' " --add identificador [google, github] etc...\n"
+    printf '%b' " --totp identificador [google, github] etc...\n"
+    printf '%b' " --list Listagem de todos identificadores disponiveis\n"
+    exit 0
+}
+
+start() # Inicializa diretório + permissões etc...
+{
+    if [ ! -d "$SOURCE" ]; then
+        mkdir -p "$SOURCE"
+        chmod 0700 "$SOURCE"
+    fi
+}
+
+new_key() # Adiciona novo serviço
+{
+    if [ "$1" ]; then
+        service="$1"
+    else
+        printf "Nome do serviço: "
+        read -r service
+    fi
+    printf "Chave secreta do ${service}: "
+    read -r secret
+    printf "${secret}\n" | \
+    gpg --quiet --symmetric --out "${SOURCE}/$service"
+}
+
+totp() # Gera numeração de autenticação baseado em hora
+{
+    if [ "$1" ]; then
+        secret="$1"
+    else
+        printf "Qual nome do serviço? "
+        read -r secret
+    fi
+    generate="$(gpg --quiet < ${SOURCE}/$secret)"
+    oathtool $EXTRA_ARG --digits=8 --base32 --totp=SHA512 "$generate"
+}
+
+list() # Listagem de todos serviços disponiveis
+{
+    cd $SOURCE
+    for cc in *
+    do
+        if [ "$cc" = '*' ]
+        then
+            printf '%s\n' "Sem serviços disponiveis."
+            exit 0
+        fi
+        printf '%s\n' "Identificador: [$cc]"
+    done
+}
+
+################################### Inicio
+
+start
+case $1 in
+    --add)
+        new_key "$2"
+      ;;
+    --totp)
+        totp "$2"
+    ;;
+    --list)
+        list
+    ;;
+    *)
+        usage
+    ;;
+esac
